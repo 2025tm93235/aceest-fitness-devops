@@ -1,0 +1,5 @@
+# Normalise line endings so shell steps, Dockerfile and Jenkinsfile
+# behave identically on Windows workstations and Linux build agents.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
