@@ -1,0 +1,49 @@
+[project]
+name = "aceest-fitness"
+version = "1.0.0"
+description = "ACEest Fitness & Gym management web application (Flask)"
+readme = "README.md"
+requires-python = ">=3.10"
+
+# ---------------------------------------------------------------- ruff ----
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "S",        # flake8-bandit (security)
+    "SIM",      # flake8-simplify
+    "C4",       # flake8-comprehensions
+    "RUF",      # ruff-specific rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]   # asserts and test credentials are expected in tests
+
+# -------------------------------------------------------------- pytest ----
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=aceest",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
+]
+
+# ------------------------------------------------------------ coverage ----
+[tool.coverage.run]
+branch = true
+relative_files = true
+
+[tool.coverage.report]
+skip_covered = true
+exclude_also = ['if __name__ == "__main__":']
