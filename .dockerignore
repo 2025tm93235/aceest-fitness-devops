@@ -1,0 +1,13 @@
+# Allow-list: send only what the image build needs to the Docker daemon.
+*
+!app.py
+!aceest/
+!tests/
+!requirements.txt
+!requirements-dev.txt
+!pyproject.toml
+
+# ...and never any caches or local data inside those paths
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
