@@ -1,0 +1,138 @@
+# ACEest Fitness & Gym - Continuous Integration
+#
+# Runs on every push and pull request:
+#   1. Build & Lint             - install deps, byte-compile, ruff lint + format check
+#   2. Docker Image Assembly    - build the runtime and test images (Buildx, cached)
+#   3. Automated Testing        - run pytest inside the test image, smoke-test runtime image
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  IMAGE_NAME: aceest-fitness
+
+jobs:
+  build-lint:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile sources (syntax check)
+        run: python -m compileall -q app.py aceest tests
+
+      - name: Lint (ruff)
+        run: ruff check --output-format=github .
+
+      - name: Check formatting (ruff)
+        run: ruff format --check .
+
+      - name: Verify application boots
+        env:
+          ACEEST_DB_PATH: ${{ runner.temp }}/ci.db
+        run: python -c "from app import app; print('Loaded', app.name)"
+
+  docker-build:
+    name: Docker Image Assembly
+    needs: build-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/runtime-image.tar
+          cache-from: type=gha,scope=runtime
+          cache-to: type=gha,scope=runtime,mode=max
+
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: test
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}-test
+          outputs: type=docker,dest=${{ runner.temp }}/test-image.tar
+          cache-from: type=gha,scope=test
+          cache-to: type=gha,scope=test,mode=max
+
+      - name: Upload images for the test job
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-images
+          path: ${{ runner.temp }}/*-image.tar
+          retention-days: 1
+
+  test:
+    name: Automated Testing (in container)
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Download images
+        uses: actions/download-artifact@v8
+        with:
+          name: docker-images
+          path: ${{ runner.temp }}/images
+
+      - name: Load images
+        run: |
+          docker load --input "${{ runner.temp }}/images/test-image.tar"
+          docker load --input "${{ runner.temp }}/images/runtime-image.tar"
+          docker image ls "${IMAGE_NAME}"
+
+      - name: Run pytest inside the container
+        run: |
+          set +e
+          docker run --name aceest-tests "${IMAGE_NAME}:${GITHUB_SHA}-test" \
+            python -m pytest --junitxml=reports/junit.xml --cov-report=xml:reports/coverage.xml
+          status=$?
+          docker cp aceest-tests:/app/reports ./reports
+          docker rm aceest-tests >/dev/null
+          exit $status
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: reports/
+          if-no-files-found: warn
+
+      - name: Smoke test runtime image
+        run: bash scripts/smoke_test.sh "${IMAGE_NAME}:${GITHUB_SHA}" aceest-ci-smoke
