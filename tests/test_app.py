@@ -16,6 +16,7 @@ def test_health_endpoint_reports_ok(client):
     assert body["status"] == "ok"
     assert body["service"] == "aceest-fitness"
     assert body["version"] == aceest.__version__
+    assert body["database"] == "ok"
 
 
 def test_unknown_api_route_returns_json_404(client):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 from typing import Any
 
 
@@ -23,6 +24,7 @@ def load_config() -> dict[str, Any]:
     """
     return {
         "SECRET_KEY": os.environ.get("ACEEST_SECRET_KEY") or secrets.token_hex(32),
+        "DATABASE": os.environ.get("ACEEST_DB_PATH") or str(Path.cwd() / "instance" / "aceest.db"),
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": _env_flag("ACEEST_SECURE_COOKIES"),
