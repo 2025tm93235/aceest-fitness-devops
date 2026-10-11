@@ -4,7 +4,7 @@
 // clean, fully containerised build on the lab VM:
 //   Checkout (clean workspace) -> Build test image -> Lint & compile
 //   -> Unit tests in container (JUnit + coverage) -> Build runtime image
-//   -> Smoke test -> Image report
+//   -> [optional SonarQube analysis + quality gate] -> Smoke test -> Image report
 //
 // Everything runs inside Docker, so the agent only needs Git and Docker;
 // the host Python version does not matter.
@@ -18,6 +18,14 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
+    }
+
+    parameters {
+        booleanParam(
+            name: 'RUN_SONAR',
+            defaultValue: false,
+            description: 'Run SonarQube analysis and enforce its Quality Gate (requires the SonarQube server "sonarqube" and scanner tool "SonarScanner" to be configured in Jenkins).'
+        )
     }
 
     triggers {
@@ -79,6 +87,27 @@ pipeline {
                 always {
                     junit allowEmptyResults: true, testResults: 'reports/junit.xml'
                     archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            when { expression { return params.RUN_SONAR } }
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('sonarqube') {
+                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectVersion=${env.BUILD_NUMBER}"
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { return params.RUN_SONAR } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
