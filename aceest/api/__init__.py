@@ -15,6 +15,7 @@ def init_app(app: Flask) -> None:
         clients,
         generator,
         health,
+        membership,
         metrics,
         programs,
         progress,

@@ -12,11 +12,13 @@ from aceest.db import get_db
 from aceest.errors import ApiError
 from aceest.services import (
     HEIGHT_RANGE_CM,
+    MEMBERSHIP_STATUSES,
     WEIGHT_RANGE_KG,
     WORKOUT_TYPES,
     BmiResult,
     calculate_bmi,
     estimate_calories,
+    membership_state,
     week_label,
 )
 from aceest.validation import ValidationError, Validator
@@ -30,6 +32,8 @@ _UPDATABLE_COLUMNS = (
     "calories",
     "target_weight",
     "target_adherence",
+    "membership_status",
+    "membership_end",
 )
 
 
@@ -44,6 +48,8 @@ def validate_client(data: Mapping[str, Any], *, partial: bool = False) -> dict[s
         .string("program", choices=PROGRAMS)
         .number("target_weight", minimum=WEIGHT_RANGE_KG[0], maximum=WEIGHT_RANGE_KG[1])
         .integer("target_adherence", minimum=0, maximum=100)
+        .string("membership_status", choices=MEMBERSHIP_STATUSES)
+        .date("membership_end")
         .validate()
     )
 
@@ -90,8 +96,14 @@ def create_client(data: Mapping[str, Any]) -> dict[str, Any]:
 def update_client(name: str, data: Mapping[str, Any]) -> dict[str, Any]:
     existing = require_client(name)
     changes = validate_client(data, partial=True)
-    if "name" in changes and changes["name"] is None:
-        raise ApiError("Validation failed", status=400, details={"name": "is required"})
+    # These columns may be omitted in a partial update but never blanked.
+    errors = {
+        field: "is required"
+        for field in ("name", "membership_status")
+        if field in changes and changes[field] is None
+    }
+    if errors:
+        raise ValidationError(errors)
     merged = _with_calories({**existing, **changes})
 
     assignments = ", ".join(f"{column} = ?" for column in _UPDATABLE_COLUMNS)
@@ -318,3 +330,12 @@ def client_summary(name: str) -> dict[str, Any]:
         },
         "latest_metrics": latest_metric(client["id"]),
     }
+
+
+# ------------------------------------------------------------- membership --
+def client_membership(name: str, today: date | None = None) -> dict[str, Any]:
+    client = require_client(name)
+    state = membership_state(
+        client["membership_status"], client["membership_end"], today or date.today()
+    )
+    return {"client": client["name"], **state}
