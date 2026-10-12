@@ -14,6 +14,7 @@ def init_app(app: Flask) -> None:
         calculators,
         clients,
         health,
+        metrics,
         programs,
         progress,
         workouts,

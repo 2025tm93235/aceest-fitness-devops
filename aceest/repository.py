@@ -14,6 +14,8 @@ from aceest.services import (
     HEIGHT_RANGE_CM,
     WEIGHT_RANGE_KG,
     WORKOUT_TYPES,
+    BmiResult,
+    calculate_bmi,
     estimate_calories,
     week_label,
 )
@@ -234,6 +236,66 @@ def list_workouts(name: str) -> list[dict[str, Any]]:
     return [_load_workout(row["id"]) for row in ids.fetchall()]
 
 
+# ---------------------------------------------------------- body metrics --
+_METRIC_FIELDS = ("weight", "waist", "bodyfat")
+
+
+def add_metric(name: str, data: Mapping[str, Any]) -> dict[str, Any]:
+    client = require_client(name)
+    metric = (
+        Validator(data)
+        .date("date", default=date.today().isoformat())
+        .number("weight", minimum=WEIGHT_RANGE_KG[0], maximum=WEIGHT_RANGE_KG[1])
+        .number("waist", minimum=20, maximum=300)
+        .number("bodyfat", minimum=1, maximum=75)
+        .validate()
+    )
+    if all(metric.get(field) is None for field in _METRIC_FIELDS):
+        raise ValidationError({"metrics": "provide at least one of weight, waist, bodyfat"})
+
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO metrics (client_id, date, weight, waist, bodyfat) VALUES (?, ?, ?, ?, ?)",
+        (client["id"], metric["date"], *(metric.get(field) for field in _METRIC_FIELDS)),
+    )
+    db.commit()
+    row = db.execute(
+        "SELECT id, date, weight, waist, bodyfat FROM metrics WHERE id = ?", (cursor.lastrowid,)
+    ).fetchone()
+    return dict(row)
+
+
+def list_metrics(name: str) -> list[dict[str, Any]]:
+    """Body metrics in chronological order (legacy v2.2.4 weight chart)."""
+    client = require_client(name)
+    rows = get_db().execute(
+        "SELECT id, date, weight, waist, bodyfat FROM metrics "
+        "WHERE client_id = ? ORDER BY date, id",
+        (client["id"],),
+    )
+    return [dict(row) for row in rows]
+
+
+def latest_metric(client_id: int) -> dict[str, Any] | None:
+    row = (
+        get_db()
+        .execute(
+            "SELECT id, date, weight, waist, bodyfat FROM metrics "
+            "WHERE client_id = ? ORDER BY date DESC, id DESC LIMIT 1",
+            (client_id,),
+        )
+        .fetchone()
+    )
+    return dict(row) if row else None
+
+
+def client_bmi(name: str) -> BmiResult:
+    client = require_client(name)
+    if not client["height"] or not client["weight"]:
+        raise ApiError("Client height and weight are required to calculate BMI", status=422)
+    return calculate_bmi(client["height"], client["weight"])
+
+
 # ---------------------------------------------------------------- summary --
 def client_summary(name: str) -> dict[str, Any]:
     """Profile, program notes, goals and progress statistics (legacy v2.2.4)."""
@@ -254,4 +316,5 @@ def client_summary(name: str) -> dict[str, Any]:
             "weeks_logged": weeks_logged,
             "average_adherence": round(average, 1) if average is not None else 0,
         },
+        "latest_metrics": latest_metric(client["id"]),
     }
