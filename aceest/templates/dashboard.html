@@ -13,7 +13,7 @@
     <tbody>
       {% for client in clients %}
       <tr>
-        <td>{{ client.name }}</td>
+        <td><a href="{{ url_for('web.client_detail', name=client.name) }}">{{ client.name }}</a></td>
         <td>{{ programs[client.program].name if client.program else '-' }}</td>
         <td>{{ client.weight or '-' }}</td>
         <td>{{ client.calories or '-' }}</td>
