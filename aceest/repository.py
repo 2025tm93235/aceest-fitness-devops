@@ -10,8 +10,14 @@ from typing import Any
 from aceest.catalog import PROGRAMS, get_program
 from aceest.db import get_db
 from aceest.errors import ApiError
-from aceest.services import HEIGHT_RANGE_CM, WEIGHT_RANGE_KG, estimate_calories, week_label
-from aceest.validation import Validator
+from aceest.services import (
+    HEIGHT_RANGE_CM,
+    WEIGHT_RANGE_KG,
+    WORKOUT_TYPES,
+    estimate_calories,
+    week_label,
+)
+from aceest.validation import ValidationError, Validator
 
 _UPDATABLE_COLUMNS = (
     "name",
@@ -134,6 +140,98 @@ def list_progress(name: str) -> list[dict[str, Any]]:
         (client["id"],),
     )
     return [dict(row) for row in rows]
+
+
+# --------------------------------------------------------------- workouts --
+def _validate_exercises(raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValidationError({"exercises": "must be a list"})
+    exercises: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping):
+            errors[f"exercises[{index}]"] = "must be an object"
+            continue
+        try:
+            exercises.append(
+                Validator(item)
+                .string("name", required=True, max_length=80)
+                .integer("sets", minimum=1, maximum=20)
+                .integer("reps", minimum=1, maximum=100)
+                .number("weight", minimum=0, maximum=1000)
+                .validate()
+            )
+        except ValidationError as exc:
+            errors.update({f"exercises[{index}].{k}": v for k, v in exc.errors.items()})
+    if errors:
+        raise ValidationError(errors)
+    return exercises
+
+
+def add_workout(name: str, data: Mapping[str, Any]) -> dict[str, Any]:
+    """Log a workout session with its exercises in a single transaction."""
+    client = require_client(name)
+    workout = (
+        Validator(data)
+        .date("date", default=date.today().isoformat())
+        .string("workout_type", required=True, choices=WORKOUT_TYPES)
+        .integer("duration_min", minimum=1, maximum=600, default=60)
+        .string("notes", max_length=500)
+        .validate()
+    )
+    exercises = _validate_exercises(data.get("exercises"))
+
+    db = get_db()
+    with db:  # commit on success, roll back on error
+        cursor = db.execute(
+            "INSERT INTO workouts (client_id, date, workout_type, duration_min, notes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                client["id"],
+                workout["date"],
+                workout["workout_type"],
+                workout["duration_min"],
+                workout.get("notes"),
+            ),
+        )
+        workout_id = cursor.lastrowid
+        db.executemany(
+            "INSERT INTO exercises (workout_id, name, sets, reps, weight) VALUES (?, ?, ?, ?, ?)",
+            [
+                (workout_id, e["name"], e.get("sets"), e.get("reps"), e.get("weight"))
+                for e in exercises
+            ],
+        )
+    return _load_workout(workout_id)
+
+
+def _load_workout(workout_id: int) -> dict[str, Any]:
+    db = get_db()
+    workout = dict(
+        db.execute(
+            "SELECT id, date, workout_type, duration_min, notes FROM workouts WHERE id = ?",
+            (workout_id,),
+        ).fetchone()
+    )
+    workout["exercises"] = [
+        dict(row)
+        for row in db.execute(
+            "SELECT name, sets, reps, weight FROM exercises WHERE workout_id = ? ORDER BY id",
+            (workout_id,),
+        )
+    ]
+    return workout
+
+
+def list_workouts(name: str) -> list[dict[str, Any]]:
+    """Workout history, newest first (legacy v2.2.4 history window)."""
+    client = require_client(name)
+    ids = get_db().execute(
+        "SELECT id FROM workouts WHERE client_id = ? ORDER BY date DESC, id DESC", (client["id"],)
+    )
+    return [_load_workout(row["id"]) for row in ids.fetchall()]
 
 
 # ---------------------------------------------------------------- summary --

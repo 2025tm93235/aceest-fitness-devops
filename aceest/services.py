@@ -16,6 +16,9 @@ from aceest.catalog import get_program
 WEIGHT_RANGE_KG = (1.0, 500.0)
 HEIGHT_RANGE_CM = (50.0, 272.0)
 
+# Session types offered by the legacy v2.2.4 "Log Workout" window.
+WORKOUT_TYPES = ("Strength", "Hypertrophy", "Cardio", "Mobility")
+
 
 def estimate_calories(weight_kg: float, program_code: str) -> int:
     """Daily calorie estimate = body weight x program factor (legacy v1.1)."""
