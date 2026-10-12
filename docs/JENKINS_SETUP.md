@@ -6,7 +6,7 @@ This guide configures the existing Jenkins on the lab VM to build
 Assumed (already installed on the VM): Jenkins, Docker, Git, SonarQube, and
 internet access. Commands are run as a user with `sudo`.
 
-> Replace `YOUR_GITHUB_USERNAME` with your GitHub user name throughout.
+> Replace `2025tm93235` with your GitHub user name throughout.
 
 ---
 
@@ -73,11 +73,11 @@ missing from **Available plugins**, then restart Jenkins:
 1. **Dashboard → New Item**
 2. Name: `aceest-fitness-devops`, type **Pipeline**, click **OK**.
 3. **General**: tick *GitHub project* and enter
-   `https://github.com/YOUR_GITHUB_USERNAME/aceest-fitness-devops/` (optional, adds a link).
+   `https://github.com/2025tm93235/aceest-fitness-devops/` (optional, adds a link).
 4. **Pipeline** section:
    - Definition: **Pipeline script from SCM**
    - SCM: **Git**
-   - Repository URL: `https://github.com/YOUR_GITHUB_USERNAME/aceest-fitness-devops.git`
+   - Repository URL: `https://github.com/2025tm93235/aceest-fitness-devops.git`
    - Credentials: *none* (the repository is public)
    - Branch Specifier: `*/main`
    - Script Path: `Jenkinsfile`

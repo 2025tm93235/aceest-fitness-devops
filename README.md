@@ -1,6 +1,6 @@
 # ACEest Fitness & Gym — Flask App with Automated CI/CD
 
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/aceest-fitness-devops/actions/workflows/main.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/aceest-fitness-devops/actions/workflows/main.yml)
+[![CI](https://github.com/2025tm93235/aceest-fitness-devops/actions/workflows/main.yml/badge.svg)](https://github.com/2025tm93235/aceest-fitness-devops/actions/workflows/main.yml)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Coverage gate](https://img.shields.io/badge/coverage%20gate-90%25-brightgreen)
 
@@ -88,7 +88,7 @@ Docker (see [section 5](#5-running-with-docker)).
 > On the VM, use Docker, or install a newer Python (`sudo dnf install python3.12`).
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/aceest-fitness-devops.git
+git clone https://github.com/2025tm93235/aceest-fitness-devops.git
 cd aceest-fitness-devops
 
 python3 -m venv .venv
