@@ -18,10 +18,14 @@ WEIGHT_RANGE_KG = (1.0, 500.0)
 HEIGHT_RANGE_CM = (50.0, 272.0)
 
 # Stored membership states (legacy v3.2.4 defaulted every client to "Active").
-MEMBERSHIP_STATUSES = ("Active", "Inactive")
+ACTIVE = "Active"
+MEMBERSHIP_STATUSES = (ACTIVE, "Inactive")
+
+# Training focus shared by the workout types and the program generator.
+HYPERTROPHY = "Hypertrophy"
 
 # Session types offered by the legacy v2.2.4 "Log Workout" window.
-WORKOUT_TYPES = ("Strength", "Hypertrophy", "Cardio", "Mobility")
+WORKOUT_TYPES = ("Strength", HYPERTROPHY, "Cardio", "Mobility")
 
 
 def estimate_calories(weight_kg: float, program_code: str) -> int:
@@ -74,7 +78,7 @@ def week_label(day: date) -> str:
 # Exercise pool and experience rules from the legacy v3.1.2 "AI" generator.
 EXERCISE_POOL: dict[str, tuple[str, ...]] = {
     "Strength": ("Squat", "Deadlift", "Bench Press", "Overhead Press", "Pull-Up", "Barbell Row"),
-    "Hypertrophy": (
+    HYPERTROPHY: (
         "Leg Press",
         "Incline Dumbbell Press",
         "Lat Pulldown",
@@ -112,7 +116,7 @@ def program_focus(program_code: str | None) -> str:
     if code.startswith("fat-loss"):
         return "Conditioning"
     if code.startswith("muscle-gain"):
-        return "Hypertrophy"
+        return HYPERTROPHY
     return "Full Body"
 
 
@@ -153,16 +157,16 @@ def membership_state(status: str, membership_end: str | None, today: date) -> di
     """
     end = date.fromisoformat(membership_end) if membership_end else None
     days_remaining = (end - today).days if end else None
-    if status != "Active":
+    if status != ACTIVE:
         effective = status
     elif end is not None and end < today:
         effective = "Expired"
     else:
-        effective = "Active"
+        effective = ACTIVE
     return {
         "status": status,
         "effective_status": effective,
         "membership_end": membership_end,
         "days_remaining": days_remaining,
-        "is_active": effective == "Active",
+        "is_active": effective == ACTIVE,
     }
