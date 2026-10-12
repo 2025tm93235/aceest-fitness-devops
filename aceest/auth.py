@@ -9,7 +9,7 @@ import functools
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from flask import Flask, session
+from flask import Flask, current_app, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from aceest.db import get_db
@@ -22,11 +22,15 @@ F = TypeVar("F", bound=Callable[..., Any])
 _DUMMY_HASH = generate_password_hash("aceest-timing-equaliser")
 
 
+def _hash_method() -> str:
+    return current_app.config.get("PASSWORD_HASH_METHOD", "scrypt")
+
+
 def create_user(username: str, password: str, role: str = "Trainer") -> None:
     db = get_db()
     db.execute(
         "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-        (username, generate_password_hash(password), role),
+        (username, generate_password_hash(password, method=_hash_method()), role),
     )
     db.commit()
 
