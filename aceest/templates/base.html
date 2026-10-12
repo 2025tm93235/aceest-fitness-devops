@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ACEest Fitness &amp; Gym{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('web.dashboard') }}">ACEest <span>Functional Fitness</span></a>
+    <nav>
+      <a href="{{ url_for('web.programs') }}">Programs</a>
+      {% block nav_extra %}{% endblock %}
+      {% if session.get('user') %}
+        <span class="who">{{ session['user']['username'] }} ({{ session['user']['role'] }})</span>
+        <form method="post" action="{{ url_for('web.logout') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link">Log out</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('web.login') }}">Log in</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, message in messages %}
+            <li class="flash {{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>ACEest Fitness &amp; Gym &middot; <a href="{{ url_for('health.health') }}">health</a></footer>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Programs &middot; ACEest{% endblock %}
+{% block content %}
+<h1>Training Programs</h1>
+<div class="cards">
+  {% for program in programs %}
+  <section class="card program" style="border-top-color: {{ program.color }}">
+    <h2>{{ program.name }}</h2>
+    <p class="muted">{{ program.description }} &middot; calorie factor {{ program.calorie_factor }} kcal/kg</p>
+    <h3>Weekly workout</h3>
+    {% if program.workout %}
+      <ul>{% for line in program.workout %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% else %}
+      <p class="muted">No day-by-day plan defined for this variant.</p>
+    {% endif %}
+    <h3>Nutrition</h3>
+    <ul>{% for line in program.diet %}<li>{{ line }}</li>{% endfor %}</ul>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

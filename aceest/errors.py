@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 
 
@@ -33,7 +33,9 @@ def _wants_json() -> bool:
 def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(ApiError)
     def handle_api_error(err: ApiError):
-        return jsonify(err.to_dict()), err.status
+        if _wants_json():
+            return jsonify(err.to_dict()), err.status
+        return render_template("error.html", code=err.status, message=err.message), err.status
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(err: HTTPException):

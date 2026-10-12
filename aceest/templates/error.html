@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }} &middot; ACEest{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Error {{ code }}</h1>
+  <p>{{ message }}</p>
+  <p><a href="{{ url_for('web.dashboard') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}
