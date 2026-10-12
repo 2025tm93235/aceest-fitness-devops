@@ -9,7 +9,7 @@ bp = Blueprint("api", __name__, url_prefix="/api")
 
 def init_app(app: Flask) -> None:
     # Importing the route modules attaches their views to ``bp``.
-    from aceest.api import auth, calculators, health, programs  # noqa: F401
+    from aceest.api import auth, calculators, clients, health, programs, progress  # noqa: F401
 
     app.register_blueprint(bp)
     app.register_blueprint(health.bp)

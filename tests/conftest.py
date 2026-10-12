@@ -21,6 +21,8 @@ def app(tmp_path):
             "ADMIN_USERNAME": ADMIN_USERNAME,
             "ADMIN_PASSWORD": ADMIN_PASSWORD,
             "ADMIN_PASSWORD_IS_DEFAULT": False,
+            # Fast hash for tests only; production keeps the scrypt default.
+            "PASSWORD_HASH_METHOD": "pbkdf2:sha256:1000",
         }
     )
 
