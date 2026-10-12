@@ -22,40 +22,47 @@ from aceest.services import (
 from aceest.validation import ValidationError, Validator
 from aceest.web import bp
 
+# Endpoint names and flash-message categories used by several views
+# (one definition each instead of repeated string literals).
+DASHBOARD = "web.dashboard"
+CLIENT_DETAIL = "web.client_detail"
+FLASH_SUCCESS = "success"
+FLASH_ERROR = "error"
+
 
 def flash_errors(error: ValidationError) -> None:
     for field, message in error.errors.items():
-        flash(f"{field.replace('_', ' ').capitalize()} {message}.", "error")
+        flash(f"{field.replace('_', ' ').capitalize()} {message}.", FLASH_ERROR)
 
 
 def safe_next(target: str | None) -> str:
     """Only allow same-site relative redirects after login (no open redirect)."""
     if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
         return target
-    return url_for("web.dashboard")
+    return url_for(DASHBOARD)
 
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
         if current_user():
-            return redirect(url_for("web.dashboard"))
+            return redirect(url_for(DASHBOARD))
         return render_template("login.html", next=request.args.get("next", ""))
 
     username = request.form.get("username", "").strip()
     role = verify_credentials(username, request.form.get("password", ""))
     if role is None:
-        flash("Invalid username or password.", "error")
+        flash("Invalid username or password.", FLASH_ERROR)
         return render_template("login.html", next=request.form.get("next", "")), 401
     login_user(username, role)
-    flash(f"Welcome, {username}.", "success")
+    flash(f"Welcome, {username}.", FLASH_SUCCESS)
     return redirect(safe_next(request.form.get("next")))
 
 
 @bp.post("/logout")
 def logout():
     logout_user()
-    flash("You have been logged out.", "success")
+    flash("You have been logged out.", FLASH_SUCCESS)
     return redirect(url_for("web.login"))
 
 
@@ -78,9 +85,9 @@ def create_client():
         client = repository.create_client(request.form)
     except ValidationError as error:
         flash_errors(error)
-        return redirect(url_for("web.dashboard"))
-    flash(f"Client {client['name']} saved.", "success")
-    return redirect(url_for("web.client_detail", name=client["name"]))
+        return redirect(url_for(DASHBOARD))
+    flash(f"Client {client['name']} saved.", FLASH_SUCCESS)
+    return redirect(url_for(CLIENT_DETAIL, name=client["name"]))
 
 
 # ------------------------------------------------------------ client page --
@@ -114,8 +121,8 @@ def _submit(name: str, action: Callable[[], Any], success: str) -> Any:
     except ValidationError as error:
         flash_errors(error)
     else:
-        flash(success, "success")
-    return redirect(url_for("web.client_detail", name=name))
+        flash(success, FLASH_SUCCESS)
+    return redirect(url_for(CLIENT_DETAIL, name=name))
 
 
 @bp.get("/clients/<name>")
@@ -131,17 +138,17 @@ def update_client(name: str):
         client = repository.update_client(name, request.form)
     except ValidationError as error:
         flash_errors(error)
-        return redirect(url_for("web.client_detail", name=name))
-    flash("Profile updated.", "success")
-    return redirect(url_for("web.client_detail", name=client["name"]))
+        return redirect(url_for(CLIENT_DETAIL, name=name))
+    flash("Profile updated.", FLASH_SUCCESS)
+    return redirect(url_for(CLIENT_DETAIL, name=client["name"]))
 
 
 @bp.post("/clients/<name>/delete")
 @login_required
 def delete_client(name: str):
     repository.delete_client(name)
-    flash(f"Client {name} deleted.", "success")
-    return redirect(url_for("web.dashboard"))
+    flash(f"Client {name} deleted.", FLASH_SUCCESS)
+    return redirect(url_for(DASHBOARD))
 
 
 @bp.post("/clients/<name>/progress")
@@ -190,7 +197,7 @@ def generate_client_program(name: str):
         )
     except ValidationError as error:
         flash_errors(error)
-        return redirect(url_for("web.client_detail", name=name))
+        return redirect(url_for(CLIENT_DETAIL, name=name))
     rng = random.Random(data.get("seed"))  # noqa: S311 - not security-sensitive
     generated = generate_program(client["program"], data["experience"], rng)
     return _client_page(name, generated=generated)
