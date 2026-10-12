@@ -3,8 +3,9 @@
 // Secondary validation layer: pulls the latest code from GitHub and performs a
 // clean, fully containerised build on the lab VM:
 //   Checkout (clean workspace) -> Build test image -> Lint & compile
-//   -> Unit tests in container (JUnit + coverage) -> Build runtime image
-//   -> [optional SonarQube analysis + quality gate] -> Smoke test -> Image report
+//   -> Unit tests in container (JUnit + coverage)
+//   -> [optional SonarQube analysis with blocking quality gate]
+//   -> Build runtime image -> Smoke test -> Image report
 //
 // Everything runs inside Docker, so the agent only needs Git and Docker;
 // the host Python version does not matter.
@@ -91,93 +92,31 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Analysis & Quality Gate') {
             when { expression { return params.RUN_SONAR } }
             steps {
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('sonarqube') {
-                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectVersion=${env.BUILD_NUMBER}"
+                        // -Dsonar.scanner.skipJreProvisioning=true
+                        //     Run the scanner on the agent's own Java 17+ instead of downloading
+                        //     a JRE from the SonarQube server (that download returned HTTP 500).
+                        // -Dsonar.qualitygate.wait=true
+                        //     The scanner itself polls SonarQube until the Quality Gate is
+                        //     computed and exits non-zero if it is not OK, so no SonarQube ->
+                        //     Jenkins webhook and no custom polling code are needed.
+                        sh """
+                            java -version
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectVersion=${env.BUILD_NUMBER} \
+                                -Dsonar.scanner.skipJreProvisioning=true \
+                                -Dsonar.qualitygate.wait=true \
+                                -Dsonar.qualitygate.timeout=300
+                        """
                     }
                 }
             }
         }
-
-        stage('Quality Gate') {
-
-    when { expression { return params.RUN_SONAR } }
-
-    steps {
-        script {
-
-            def reportFile = '.scannerwork/report-task.txt'
-
-            def ceTaskUrl = sh(
-                script: """
-                    grep '^ceTaskUrl=' ${reportFile} | cut -d= -f2-
-                """,
-                returnStdout: true
-            ).trim()
-
-            timeout(time: 5, unit: 'MINUTES') {
-
-                waitUntil {
-
-                    sleep 10
-
-                    def response = sh(
-                        script: "curl -s '${ceTaskUrl}'",
-                        returnStdout: true
-                    ).trim()
-
-                    def json = readJSON text: response
-
-                    def status = json.task.status
-
-                    echo "Sonar Task Status: ${status}"
-
-                    if (status == "SUCCESS") {
-                        return true
-                    }
-
-                    if (status == "FAILED") {
-                        error("SonarQube analysis failed.")
-                    }
-
-                    if (status == "CANCELED") {
-                        error("SonarQube analysis canceled.")
-                    }
-
-                    return false
-                }
-            }
-
-            def taskResponse = sh(
-                script: "curl -s '${ceTaskUrl}'",
-                returnStdout: true
-            ).trim()
-
-            def taskJson = readJSON text: taskResponse
-
-            def analysisId = taskJson.task.analysisId
-
-            def gateResponse = sh(
-                script: """
-                    curl -s '${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=${analysisId}'
-                """,
-                returnStdout: true
-            ).trim()
-
-            def gateJson = readJSON text: gateResponse
-
-            if (gateJson.projectStatus.status != "OK") {
-                error("Quality Gate FAILED (${gateJson.projectStatus.status})")
-            }
-
-            echo "Quality Gate PASSED"
-        }
-    }
-}
 
         stage('Build Runtime Image') {
             steps {
