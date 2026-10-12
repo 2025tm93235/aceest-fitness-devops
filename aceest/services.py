@@ -6,7 +6,8 @@ tested directly.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+import random
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any
 
@@ -64,3 +65,78 @@ def calculate_bmi(height_cm: float, weight_kg: float) -> BmiResult:
 def week_label(day: date) -> str:
     """Label used for weekly adherence entries, e.g. ``Week 07 - 2026`` (legacy v2.0)."""
     return day.strftime("Week %U - %Y")
+
+
+# ------------------------------------------------------ program generator --
+# Exercise pool and experience rules from the legacy v3.1.2 "AI" generator.
+EXERCISE_POOL: dict[str, tuple[str, ...]] = {
+    "Strength": ("Squat", "Deadlift", "Bench Press", "Overhead Press", "Pull-Up", "Barbell Row"),
+    "Hypertrophy": (
+        "Leg Press",
+        "Incline Dumbbell Press",
+        "Lat Pulldown",
+        "Lateral Raise",
+        "Bicep Curl",
+        "Tricep Extension",
+    ),
+    "Conditioning": ("Running", "Cycling", "Rowing", "Burpees", "Jump Rope", "Kettlebell Swings"),
+    "Full Body": ("Push-Up", "Pull-Up", "Lunge", "Plank", "Dumbbell Row", "Dumbbell Press"),
+}
+
+EXPERIENCE_LEVELS: dict[str, dict[str, Any]] = {
+    "beginner": {"sets": (2, 3), "reps": (8, 12), "days": 3},
+    "intermediate": {"sets": (3, 4), "reps": (8, 15), "days": 4},
+    "advanced": {"sets": (4, 5), "reps": (6, 15), "days": 5},
+}
+
+TRAINING_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+
+@dataclass(frozen=True)
+class GeneratedProgram:
+    experience: str
+    focus: str
+    days_per_week: int
+    plan: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def program_focus(program_code: str | None) -> str:
+    """Training focus derived from the client's program (legacy v3.1.2 rule)."""
+    code = program_code or ""
+    if code.startswith("fat-loss"):
+        return "Conditioning"
+    if code.startswith("muscle-gain"):
+        return "Hypertrophy"
+    return "Full Body"
+
+
+def generate_program(
+    program_code: str | None, experience: str, rng: random.Random | None = None
+) -> GeneratedProgram:
+    """Build a weekly plan of exercises, sets and reps.
+
+    ``rng`` is injectable so results are reproducible (pass a seeded
+    ``random.Random``); the legacy version used the global random state.
+    """
+    level = EXPERIENCE_LEVELS.get(experience.lower())
+    if level is None:
+        raise ValueError(f"Unknown experience level '{experience}'")
+    rng = rng or random.Random()  # noqa: S311 - workout variety, not security-sensitive
+
+    focus = program_focus(program_code)
+    days = level["days"]
+    per_day = 3 if days < 4 else 4
+    plan = [
+        {
+            "day": day,
+            "exercise": exercise,
+            "sets": rng.randint(*level["sets"]),
+            "reps": rng.randint(*level["reps"]),
+        }
+        for day in TRAINING_DAYS[:days]
+        for exercise in rng.sample(EXERCISE_POOL[focus], k=per_day)
+    ]
+    return GeneratedProgram(experience.lower(), focus, days, plan)

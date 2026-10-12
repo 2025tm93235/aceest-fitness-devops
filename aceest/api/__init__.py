@@ -13,6 +13,7 @@ def init_app(app: Flask) -> None:
         auth,
         calculators,
         clients,
+        generator,
         health,
         metrics,
         programs,
