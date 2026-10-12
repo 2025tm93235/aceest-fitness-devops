@@ -104,13 +104,80 @@ pipeline {
         }
 
         stage('Quality Gate') {
-            when { expression { return params.RUN_SONAR } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+
+    when { expression { return params.RUN_SONAR } }
+
+    steps {
+        script {
+
+            def reportFile = '.scannerwork/report-task.txt'
+
+            def ceTaskUrl = sh(
+                script: """
+                    grep '^ceTaskUrl=' ${reportFile} | cut -d= -f2-
+                """,
+                returnStdout: true
+            ).trim()
+
+            timeout(time: 5, unit: 'MINUTES') {
+
+                waitUntil {
+
+                    sleep 10
+
+                    def response = sh(
+                        script: "curl -s '${ceTaskUrl}'",
+                        returnStdout: true
+                    ).trim()
+
+                    def json = readJSON text: response
+
+                    def status = json.task.status
+
+                    echo "Sonar Task Status: ${status}"
+
+                    if (status == "SUCCESS") {
+                        return true
+                    }
+
+                    if (status == "FAILED") {
+                        error("SonarQube analysis failed.")
+                    }
+
+                    if (status == "CANCELED") {
+                        error("SonarQube analysis canceled.")
+                    }
+
+                    return false
                 }
             }
+
+            def taskResponse = sh(
+                script: "curl -s '${ceTaskUrl}'",
+                returnStdout: true
+            ).trim()
+
+            def taskJson = readJSON text: taskResponse
+
+            def analysisId = taskJson.task.analysisId
+
+            def gateResponse = sh(
+                script: """
+                    curl -s '${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=${analysisId}'
+                """,
+                returnStdout: true
+            ).trim()
+
+            def gateJson = readJSON text: gateResponse
+
+            if (gateJson.projectStatus.status != "OK") {
+                error("Quality Gate FAILED (${gateJson.projectStatus.status})")
+            }
+
+            echo "Quality Gate PASSED"
         }
+    }
+}
 
         stage('Build Runtime Image') {
             steps {
