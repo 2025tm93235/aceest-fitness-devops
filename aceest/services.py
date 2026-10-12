@@ -7,6 +7,7 @@ tested directly.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import date
 from typing import Any
 
 from aceest.catalog import get_program
@@ -55,3 +56,8 @@ def calculate_bmi(height_cm: float, weight_kg: float) -> BmiResult:
     return BmiResult(
         bmi, "Obese", "Higher risk; prioritize fat loss, consistency, and supervision."
     )
+
+
+def week_label(day: date) -> str:
+    """Label used for weekly adherence entries, e.g. ``Week 07 - 2026`` (legacy v2.0)."""
+    return day.strftime("Week %U - %Y")

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
-from aceest.catalog import PROGRAMS
+from aceest.catalog import PROGRAMS, get_program
 from aceest.db import get_db
 from aceest.errors import ApiError
-from aceest.services import HEIGHT_RANGE_CM, WEIGHT_RANGE_KG, estimate_calories
+from aceest.services import HEIGHT_RANGE_CM, WEIGHT_RANGE_KG, estimate_calories, week_label
 from aceest.validation import Validator
 
 _UPDATABLE_COLUMNS = (
@@ -103,3 +104,56 @@ def delete_client(name: str) -> None:
     db = get_db()
     db.execute("DELETE FROM clients WHERE id = ?", (client["id"],))
     db.commit()
+
+
+# --------------------------------------------------------------- progress --
+def add_progress(name: str, data: Mapping[str, Any]) -> dict[str, Any]:
+    client = require_client(name)
+    entry = (
+        Validator(data)
+        .integer("adherence", required=True, minimum=0, maximum=100)
+        .string("week", max_length=20, default=week_label(date.today()))
+        .validate()
+    )
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO progress (client_id, week, adherence) VALUES (?, ?, ?)",
+        (client["id"], entry["week"], entry["adherence"]),
+    )
+    db.commit()
+    row = db.execute(
+        "SELECT id, week, adherence, recorded_at FROM progress WHERE id = ?", (cursor.lastrowid,)
+    ).fetchone()
+    return dict(row)
+
+
+def list_progress(name: str) -> list[dict[str, Any]]:
+    client = require_client(name)
+    rows = get_db().execute(
+        "SELECT id, week, adherence, recorded_at FROM progress WHERE client_id = ? ORDER BY id",
+        (client["id"],),
+    )
+    return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------- summary --
+def client_summary(name: str) -> dict[str, Any]:
+    """Profile, program notes, goals and progress statistics (legacy v2.2.4)."""
+    client = require_client(name)
+    db = get_db()
+    weeks_logged, average = db.execute(
+        "SELECT COUNT(*), AVG(adherence) FROM progress WHERE client_id = ?", (client["id"],)
+    ).fetchone()
+    program = get_program(client["program"]) if client["program"] else None
+    return {
+        "client": client,
+        "program": program.summary() if program else None,
+        "goals": {
+            "target_weight": client["target_weight"],
+            "target_adherence": client["target_adherence"],
+        },
+        "progress": {
+            "weeks_logged": weeks_logged,
+            "average_adherence": round(average, 1) if average is not None else 0,
+        },
+    }
