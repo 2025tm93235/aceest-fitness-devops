@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &middot; ACEest{% endblock %}
+{% block content %}
+<h1>Client Dashboard</h1>
+
+<section class="card">
+  <h2>Clients ({{ clients|length }})</h2>
+  {% if clients %}
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Program</th><th>Weight</th><th>Calories/day</th><th>Membership</th></tr>
+    </thead>
+    <tbody>
+      {% for client in clients %}
+      <tr>
+        <td>{{ client.name }}</td>
+        <td>{{ programs[client.program].name if client.program else '-' }}</td>
+        <td>{{ client.weight or '-' }}</td>
+        <td>{{ client.calories or '-' }}</td>
+        <td><span class="badge {{ client.membership.effective_status|lower }}">{{ client.membership.effective_status }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No clients yet. Add the first one below.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Add client</h2>
+  <form method="post" action="{{ url_for('web.create_client') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set client = none %}
+    {% include "_client_fields.html" %}
+    <button type="submit">Save client</button>
+  </form>
+</section>
+{% endblock %}

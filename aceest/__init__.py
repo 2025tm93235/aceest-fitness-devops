@@ -37,4 +37,8 @@ def create_app(test_config: Mapping[str, Any] | None = None) -> Flask:
     from aceest import api
 
     api.init_app(app)
+
+    from aceest import web
+
+    web.init_app(app)
     return app

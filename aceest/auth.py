@@ -9,7 +9,7 @@ import functools
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from flask import Flask, current_app, session
+from flask import Flask, current_app, redirect, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from aceest.db import get_db
@@ -80,11 +80,13 @@ def logout_user() -> None:
 
 
 def login_required(view: F) -> F:
-    """Reject unauthenticated requests with HTTP 401."""
+    """Guard a view: API calls get HTTP 401, HTML pages redirect to the login page."""
 
     @functools.wraps(view)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         if current_user() is None:
+            if request.blueprint == "web":
+                return redirect(url_for("web.login", next=request.path))
             raise ApiError("Authentication required", status=401)
         return view(*args, **kwargs)
 
