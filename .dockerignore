@@ -3,6 +3,7 @@
 !app.py
 !aceest/
 !tests/
+!deploy_tests/
 !requirements.txt
 !requirements-dev.txt
 !pyproject.toml
