@@ -19,6 +19,7 @@ def init_app(app: Flask) -> None:
         metrics,
         programs,
         progress,
+        stats,
         workouts,
     )
 

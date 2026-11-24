@@ -339,3 +339,32 @@ def client_membership(name: str, today: date | None = None) -> dict[str, Any]:
         client["membership_status"], client["membership_end"], today or date.today()
     )
     return {"client": client["name"], **state}
+
+
+# ------------------------------------------------------------------ stats --
+def gym_stats(today: date | None = None) -> dict[str, Any]:
+    """Gym-wide summary for the dashboard (release 1.2.0)."""
+    today = today or date.today()
+    clients = list_clients()
+    active = sum(
+        1
+        for client in clients
+        if membership_state(client["membership_status"], client["membership_end"], today)[
+            "is_active"
+        ]
+    )
+    db = get_db()
+    average = db.execute("SELECT AVG(adherence) FROM progress").fetchone()[0]
+    workouts = db.execute("SELECT COUNT(*) FROM workouts").fetchone()[0]
+    by_program: dict[str, int] = {}
+    for client in clients:
+        if client["program"]:
+            name = PROGRAMS[client["program"]].name
+            by_program[name] = by_program.get(name, 0) + 1
+    return {
+        "total_clients": len(clients),
+        "active_memberships": active,
+        "average_adherence": round(average, 1) if average is not None else 0,
+        "workouts_logged": workouts,
+        "clients_by_program": by_program,
+    }

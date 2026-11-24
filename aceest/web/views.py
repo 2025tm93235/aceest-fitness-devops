@@ -75,7 +75,9 @@ def dashboard():
         client["membership"] = membership_state(
             client["membership_status"], client["membership_end"], today
         )
-    return render_template("dashboard.html", clients=clients, programs=PROGRAMS)
+    return render_template(
+        "dashboard.html", clients=clients, programs=PROGRAMS, stats=repository.gym_stats(today)
+    )
 
 
 @bp.post("/clients")
