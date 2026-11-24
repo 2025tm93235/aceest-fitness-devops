@@ -8,7 +8,30 @@ A Flask web application for ACEest Fitness & Gym (client management, training
 programs, progress tracking, workouts, body metrics, BMI and program generation)
 with an automated build, test and delivery workflow:
 
-**Git/GitHub → Pytest → Docker → Jenkins BUILD → GitHub Actions CI**
+**Git/GitHub → Pytest → SonarQube → Docker → Docker Hub → Jenkins CI/CD → Kubernetes (Minikube)**
+
+## Assignment 2: continuous delivery to Kubernetes
+
+| Item | Where |
+| --- | --- |
+| Docker Hub repository (all versions) | [`2025tm93235/aceest-fitness`](https://hub.docker.com/r/2025tm93235/aceest-fitness/tags) |
+| Releases (Git tags) | `v1.0.0`, `v1.1.0`, `v1.2.0`, see [Releases](#releases) |
+| Kubernetes manifests | [`k8s/`](k8s/), with the deployment script `k8s/deploy.sh` |
+| Strategies: rolling update, blue-green, canary, A/B testing, shadow, with rollback | [docs/KUBERNETES.md](docs/KUBERNETES.md) |
+| Jenkins pipeline (build → test → Sonar → push → deploy → post-deploy tests → rollback) | [`Jenkinsfile`](Jenkinsfile) |
+| Post-deployment tests (run in the test container) | [`deploy_tests/`](deploy_tests/) |
+| SonarQube report | [docs/sonarqube-report.md](docs/sonarqube-report.md) (exported with `scripts/sonar_report.py`) |
+
+### Releases
+
+| Version | Changes |
+| --- | --- |
+| 1.0.0 | Flask port of the baseline scripts v1.0 → v3.2.4 (Assignment 1) |
+| 1.1.0 | Entry point `ACEest_Fitness.py`; `GET /version`, `X-App-Version` header and footer showing version, track and pod; admin bootstrap safe for pods sharing one SQLite file |
+| 1.2.0 | Gym summary cards on the dashboard and `GET /api/stats` |
+
+Every commit to `main` publishes `<version>`, `<version>-b<build>` and `latest` to Docker Hub.
+Each release is tagged in Git (`git tag v<version>`).
 
 The application is a web port of the baseline Tkinter scripts
 (`legacy/`, v1.0 → v3.2.4). See [legacy/README.md](legacy/README.md) for how
@@ -67,8 +90,11 @@ aceest-fitness-devops/
 │   ├── web/                  # HTML views (Jinja2) with CSRF protection
 │   ├── templates/, static/   # Pages and stylesheet
 ├── tests/                    # Pytest suite (unit + API + web)
+├── deploy_tests/             # Post-deploy checks against the Kubernetes ingress
+├── k8s/                      # Kubernetes manifests + deploy.sh (strategies, rollback)
 ├── legacy/                   # Baseline Tkinter scripts (reference only)
 ├── scripts/smoke_test.sh     # Container smoke test shared by Jenkins and Actions
+├── scripts/sonar_report.py   # Export the SonarQube report to Markdown
 ├── Dockerfile, .dockerignore # Multi-stage, non-root container build
 ├── Jenkinsfile               # Jenkins BUILD pipeline
 ├── .github/workflows/main.yml# GitHub Actions CI pipeline
@@ -256,6 +282,8 @@ Errors are returned as `{"error": "...", "details": {field: message}}`.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Liveness and database check |
+| GET | `/version` | Version, deployment track and pod that answered (1.1.0+) |
+| GET | `/api/stats` 🔒 | Gym summary: clients, active memberships, average adherence, workouts (1.2.0+) |
 | POST | `/api/auth/login` | `{username, password}` → starts a session |
 | POST | `/api/auth/logout` | Ends the session |
 | GET | `/api/auth/me` 🔒 | Current user |
