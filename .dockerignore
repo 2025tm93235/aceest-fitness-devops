@@ -1,6 +1,6 @@
 # Allow-list: send only what the image build needs to the Docker daemon.
 *
-!app.py
+!ACEest_Fitness.py
 !aceest/
 !tests/
 !deploy_tests/

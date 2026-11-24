@@ -52,7 +52,7 @@ The app offers both a **JSON REST API** (`/api/...`) and **HTML pages**
 
 ```text
 aceest-fitness-devops/
-├── app.py                    # WSGI entry point (python app.py / gunicorn app:app)
+├── ACEest_Fitness.py         # WSGI entry point (python ACEest_Fitness.py / gunicorn ACEest_Fitness:app)
 ├── aceest/                   # Application package
 │   ├── __init__.py           # create_app() factory
 │   ├── config.py             # Environment-driven configuration
@@ -99,7 +99,7 @@ pip install -r requirements-dev.txt
 export ACEEST_ADMIN_PASSWORD='choose-a-password'    # PowerShell: $env:ACEEST_ADMIN_PASSWORD='...'
 export ACEEST_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 
-python app.py
+python ACEest_Fitness.py
 ```
 
 Open <http://127.0.0.1:5000> and log in as `admin` with the password you set.
@@ -162,7 +162,7 @@ How the Dockerfile keeps the image small and secure:
 | Practice | Implementation |
 |---|---|
 | Small base | `python:3.13-slim-trixie` |
-| Multi-stage build | `builder` installs dependencies into `/opt/venv`; `runtime` copies only the venv, `app.py` and `aceest/` (no compilers, tests, pip cache or dev tools) |
+| Multi-stage build | `builder` installs dependencies into `/opt/venv`; `runtime` copies only the venv, `ACEest_Fitness.py` and `aceest/` (no compilers, tests, pip cache or dev tools) |
 | Layer caching | `requirements.txt` is copied and installed before the source code |
 | Minimal build context | Allow-list `.dockerignore` (only the files the build needs) |
 | Non-root | Runs as system user `aceest` (UID 10001); app code is owned by root and read-only |
@@ -296,7 +296,7 @@ curl -b cookies.txt -H 'Content-Type: application/json' \
 | `ACEEST_ADMIN_PASSWORD` | `admin` (warning logged) | Bootstrap admin password (used only when the user is first created) |
 | `ACEEST_DB_PATH` | `./instance/aceest.db` (`/app/instance/aceest.db` in Docker) | SQLite database file |
 | `ACEEST_SECURE_COOKIES` | `false` | Set `true` when served over HTTPS |
-| `ACEEST_HOST` / `ACEEST_PORT` | `127.0.0.1` / `5000` | Only for `python app.py` |
+| `ACEEST_HOST` / `ACEEST_PORT` | `127.0.0.1` / `5000` | Only for `python ACEest_Fitness.py` |
 
 ## 9. Branching and commit conventions
 

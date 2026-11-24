@@ -35,7 +35,7 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--cov=aceest",
-    "--cov=app",
+    "--cov=ACEest_Fitness",
     "--cov-report=term-missing",
     "--cov-fail-under=90",
 ]
