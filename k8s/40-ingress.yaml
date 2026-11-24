@@ -1,0 +1,172 @@
+# Ingress routing (NGINX Ingress Controller, Minikube "ingress" addon).
+# Each strategy has its own host name; map them to `minikube ip` in /etc/hosts.
+#
+#   aceest.local                    -> stable (production URL)
+#   rolling.aceest.local            -> rolling-update deployment
+#   bluegreen.aceest.local          -> live colour      (Service aceest-bluegreen)
+#   bluegreen-preview.aceest.local  -> idle colour      (Service aceest-bluegreen-preview)
+#   canary.aceest.local             -> stable + weighted share to canary
+#   ab.aceest.local                 -> stable (A); header X-Variant: B or cookie ab_variant=always -> B
+#   shadow.aceest.local             -> stable; every request mirrored to the shadow version
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-main
+  namespace: aceest
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-stable
+                port:
+                  name: http
+    - host: rolling.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-rolling
+                port:
+                  name: http
+    - host: bluegreen.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-bluegreen
+                port:
+                  name: http
+    - host: bluegreen-preview.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-bluegreen-preview
+                port:
+                  name: http
+---
+# CANARY - primary route for canary.aceest.local (stable version).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-canary-stable
+  namespace: aceest
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: canary.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-stable
+                port:
+                  name: http
+---
+# CANARY - weighted share of canary.aceest.local to the canary version.
+# The deploy script sets canary-weight (0 = off, 100 = all traffic).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-canary
+  namespace: aceest
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "0"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: canary.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-canary
+                port:
+                  name: http
+---
+# A/B TESTING - variant A (stable) for ab.aceest.local.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-variant-a
+  namespace: aceest
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ab.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-stable
+                port:
+                  name: http
+---
+# A/B TESTING - variant B chosen by request attributes, not by chance:
+# header "X-Variant: B" or cookie "ab_variant=always".
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-variant-b
+  namespace: aceest
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Variant"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "B"
+    nginx.ingress.kubernetes.io/canary-by-cookie: "ab_variant"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ab.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-variant-b
+                port:
+                  name: http
+---
+# SHADOW - users are served by stable; NGINX mirrors every request to the
+# shadow version and discards its response (check: kubectl logs deploy/aceest-shadow).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-shadow
+  namespace: aceest
+  annotations:
+    nginx.ingress.kubernetes.io/mirror-target: "http://aceest-shadow.aceest.svc.cluster.local$request_uri"
+    nginx.ingress.kubernetes.io/mirror-request-body: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: shadow.aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-stable
+                port:
+                  name: http
