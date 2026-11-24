@@ -1,11 +1,12 @@
-// ACEest Fitness & Gym - Jenkins BUILD pipeline
+// ACEest Fitness & Gym - Jenkins CI/CD pipeline
 //
-// Secondary validation layer: pulls the latest code from GitHub and performs a
-// clean, fully containerised build on the lab VM:
-//   Checkout (clean workspace) -> Build test image -> Lint & compile
+// Pulls the latest code from GitHub (SCM polling) and runs a clean, fully
+// containerised build on the lab VM:
+//   Checkout (clean workspace) -> Version -> Build test image -> Lint & compile
 //   -> Unit tests in container (JUnit + coverage)
-//   -> [optional SonarQube analysis with blocking quality gate]
-//   -> Build runtime image -> Smoke test -> Image report
+//   -> SonarQube analysis with blocking quality gate
+//   -> Build runtime image -> Smoke test -> Push versioned image to Docker Hub
+//   -> Build artifacts (build-info.json, source archive, reports)
 //
 // Everything runs inside Docker, so the agent only needs Git and Docker;
 // the host Python version does not matter.
@@ -24,7 +25,7 @@ pipeline {
     parameters {
         booleanParam(
             name: 'RUN_SONAR',
-            defaultValue: false,
+            defaultValue: true,
             description: 'Run SonarQube analysis and enforce its Quality Gate (requires the SonarQube server "sonarqube" and scanner tool "SonarScanner" to be configured in Jenkins).'
         )
     }
@@ -38,6 +39,8 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'aceest-fitness'
+        REGISTRY_IMAGE = 'docker.io/2025tm93235/aceest-fitness'   // Docker Hub repository
+        DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'           // Jenkins credentials id
         APP_IMAGE  = "aceest-fitness:${env.BUILD_NUMBER}"
         TEST_IMAGE = "aceest-fitness:${env.BUILD_NUMBER}-test"
         TEST_CONTAINER  = "aceest-test-${env.BUILD_NUMBER}"
@@ -50,6 +53,24 @@ pipeline {
                 deleteDir()                     // start every build from an empty workspace
                 checkout scm
                 sh 'git log -1 --pretty=format:"Building commit %h by %an: %s%n"'
+            }
+        }
+
+        stage('Version') {
+            steps {
+                script {
+                    // Single source of truth: __version__ in aceest/__init__.py
+                    env.APP_VERSION = sh(
+                        returnStdout: true,
+                        script: '''sed -n 's/^__version__ = "\\(.*\\)"$/\\1/p' aceest/__init__.py'''
+                    ).trim()
+                    if (!env.APP_VERSION) {
+                        error('Could not read __version__ from aceest/__init__.py')
+                    }
+                    env.BUILD_TAG_VERSION = "${env.APP_VERSION}-b${env.BUILD_NUMBER}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v${env.APP_VERSION}"
+                    echo "Application version ${env.APP_VERSION} -> image tags ${env.APP_VERSION}, ${env.BUILD_TAG_VERSION}, latest"
+                }
             }
         }
 
@@ -66,7 +87,7 @@ pipeline {
             steps {
                 sh '''
                     docker run --rm "$TEST_IMAGE" sh -c \
-                        "python -m compileall -q app.py aceest tests && ruff check . && ruff format --check ."
+                        "python -m compileall -q aceest tests deploy_tests *.py && ruff check . && ruff format --check ."
                 '''
             }
         }
@@ -108,7 +129,7 @@ pipeline {
                         sh """
                             java -version
                             ${scannerHome}/bin/sonar-scanner \
-                                -Dsonar.projectVersion=${env.BUILD_NUMBER} \
+                                -Dsonar.projectVersion=${env.APP_VERSION} \
                                 -Dsonar.scanner.skipJreProvisioning=true \
                                 -Dsonar.qualitygate.wait=true \
                                 -Dsonar.qualitygate.timeout=300
@@ -130,13 +151,47 @@ pipeline {
             }
         }
 
-        stage('Image Report') {
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS,
+                                                  usernameVariable: 'DOCKERHUB_USER',
+                                                  passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                    sh '''
+                        echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                        for tag in "$APP_VERSION" "$BUILD_TAG_VERSION" latest; do
+                            docker tag "$APP_IMAGE" "$REGISTRY_IMAGE:$tag"
+                            docker push "$REGISTRY_IMAGE:$tag"
+                        done
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Build Artifacts') {
             steps {
                 sh '''
-                    docker image inspect "$APP_IMAGE" \
-                        --format 'Image {{index .RepoTags 0}} | user={{.Config.User}} | size={{.Size}} bytes'
-                    docker image ls "$IMAGE_NAME"
+                    mkdir -p dist
+                    git archive --format=tar.gz --prefix="aceest-fitness-$APP_VERSION/" \
+                        -o "dist/aceest-fitness-$APP_VERSION-b$BUILD_NUMBER-src.tar.gz" HEAD
+                    digest="$(docker image inspect "$REGISTRY_IMAGE:$BUILD_TAG_VERSION" --format '{{index .RepoDigests 0}}')"
+                    size="$(docker image inspect "$APP_IMAGE" --format '{{.Size}}')"
+                    cat > dist/build-info.json <<EOF
+{
+  "application": "aceest-fitness",
+  "version": "$APP_VERSION",
+  "build_number": $BUILD_NUMBER,
+  "git_commit": "$(git rev-parse HEAD)",
+  "image": "$REGISTRY_IMAGE:$BUILD_TAG_VERSION",
+  "image_tags": ["$APP_VERSION", "$BUILD_TAG_VERSION", "latest"],
+  "image_digest": "$digest",
+  "image_size_bytes": $size,
+  "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+                    cat dist/build-info.json
                 '''
+                archiveArtifacts artifacts: 'dist/**', fingerprint: true
             }
         }
     }
@@ -146,11 +201,12 @@ pipeline {
             sh '''
                 docker rm -f "$TEST_CONTAINER" "$SMOKE_CONTAINER" >/dev/null 2>&1 || true
                 docker rmi "$TEST_IMAGE" "$APP_IMAGE" >/dev/null 2>&1 || true
+                docker rmi "$REGISTRY_IMAGE:$BUILD_TAG_VERSION" >/dev/null 2>&1 || true
                 docker image prune -f >/dev/null 2>&1 || true
             '''
         }
         success {
-            echo "BUILD SUCCESS: ${env.IMAGE_NAME}:latest is ready (build #${env.BUILD_NUMBER})."
+            echo "BUILD SUCCESS: ${env.REGISTRY_IMAGE}:${env.BUILD_TAG_VERSION} pushed (build #${env.BUILD_NUMBER})."
         }
         failure {
             echo 'BUILD FAILED: see the stage logs and the JUnit report above.'
