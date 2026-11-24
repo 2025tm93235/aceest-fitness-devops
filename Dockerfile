@@ -58,7 +58,7 @@ RUN groupadd --system --gid 10001 aceest \
     && chown aceest:aceest /app/instance
 
 COPY --from=builder /opt/venv /opt/venv
-COPY app.py ./
+COPY ACEest_Fitness.py ./
 COPY aceest ./aceest
 
 ENV ACEEST_DB_PATH=/app/instance/aceest.db
@@ -74,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # otherwise try to write into the (non-existent) home directory.
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--preload", \
      "--worker-tmp-dir", "/dev/shm", "--no-control-socket", \
-     "--access-logfile", "-", "app:app"]
+     "--access-logfile", "-", "ACEest_Fitness:app"]

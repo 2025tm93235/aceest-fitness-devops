@@ -1,7 +1,7 @@
 """WSGI entry point for the ACEest Fitness & Gym application.
 
-Local development:  ``python app.py``
-Production:         ``gunicorn app:app``
+Local development:  ``python ACEest_Fitness.py``
+Production:         ``gunicorn ACEest_Fitness:app``
 """
 
 import os

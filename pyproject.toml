@@ -1,6 +1,6 @@
 [project]
 name = "aceest-fitness"
-version = "1.0.0"
+version = "1.1.0"
 description = "ACEest Fitness & Gym management web application (Flask)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,7 +35,7 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--cov=aceest",
-    "--cov=app",
+    "--cov=ACEest_Fitness",
     "--cov-report=term-missing",
     "--cov-fail-under=90",
 ]

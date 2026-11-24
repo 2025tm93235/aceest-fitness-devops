@@ -62,7 +62,7 @@ def test_test_config_overrides_defaults():
 
 def test_wsgi_entry_point_exposes_app(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    module = importlib.import_module("app")
+    module = importlib.import_module("ACEest_Fitness")
     module = importlib.reload(module)
     assert module.app.name == "aceest"
 

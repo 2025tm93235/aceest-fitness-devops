@@ -6,6 +6,7 @@ Replaces the legacy v3.x login, which stored ``admin/admin`` in plain text.
 from __future__ import annotations
 
 import functools
+import sqlite3
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -57,7 +58,12 @@ def ensure_admin_user(app: Flask) -> None:
         exists = get_db().execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
         if exists:
             return
-        create_user(username, app.config["ADMIN_PASSWORD"], role="Admin")
+        try:
+            create_user(username, app.config["ADMIN_PASSWORD"], role="Admin")
+        except sqlite3.IntegrityError:
+            # Several pods share one SQLite file in Kubernetes and start at the
+            # same time; another pod created the admin between our check and insert.
+            return
     if app.config.get("ADMIN_PASSWORD_IS_DEFAULT"):
         app.logger.warning(
             "Admin user '%s' created with the default password; "
