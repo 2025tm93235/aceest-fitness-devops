@@ -1,0 +1,16 @@
+# One SQLite database shared by every pod and every version.
+# Minikube is a single node, so a ReadWriteOnce hostPath volume can be mounted
+# by all pods at the same time and SQLite file locking works across them.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aceest-data
+  namespace: aceest
+  labels:
+    app.kubernetes.io/part-of: aceest
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
