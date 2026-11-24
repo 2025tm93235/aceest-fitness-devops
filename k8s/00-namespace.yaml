@@ -1,0 +1,7 @@
+# Namespace for every ACEest workload.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aceest
+  labels:
+    app.kubernetes.io/part-of: aceest
