@@ -3,6 +3,13 @@
 {% block content %}
 <h1>Client Dashboard</h1>
 
+<section class="stats">
+  <div class="stat"><span class="value">{{ stats.total_clients }}</span><span class="label">Clients</span></div>
+  <div class="stat"><span class="value">{{ stats.active_memberships }}</span><span class="label">Active memberships</span></div>
+  <div class="stat"><span class="value">{{ stats.average_adherence }}%</span><span class="label">Average adherence</span></div>
+  <div class="stat"><span class="value">{{ stats.workouts_logged }}</span><span class="label">Workouts logged</span></div>
+</section>
+
 <section class="card">
   <h2>Clients ({{ clients|length }})</h2>
   {% if clients %}
