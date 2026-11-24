@@ -7,6 +7,11 @@
 //   -> SonarQube analysis with blocking quality gate
 //   -> Build runtime image -> Smoke test -> Push versioned image to Docker Hub
 //   -> Build artifacts (build-info.json, source archive, reports)
+//   -> Deploy to Minikube (rolling, blue-green, canary, A/B, shadow)
+//   -> Post-deploy tests in the test container -> automatic rollback on failure
+//
+// Manual runs (Build with Parameters) can also promote a canary/A/B/shadow
+// version to stable or roll a strategy back without rebuilding.
 //
 // Everything runs inside Docker, so the agent only needs Git and Docker;
 // the host Python version does not matter.
@@ -16,13 +21,28 @@ pipeline {
 
     options {
         timestamps()
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 45, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
     }
 
     parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['deploy', 'promote', 'rollback'],
+            description: 'deploy = build, test, push and deploy this commit (default for SCM-triggered builds); promote / rollback = act on the cluster only.'
+        )
+        choice(
+            name: 'DEPLOY_STRATEGY',
+            choices: ['all', 'rolling', 'blue-green', 'canary', 'ab-test', 'shadow'],
+            description: 'Deployment strategy to use (all = every strategy).'
+        )
+        string(
+            name: 'CANARY_WEIGHT',
+            defaultValue: '20',
+            description: 'Percentage of canary.aceest.local traffic sent to a new canary.'
+        )
         booleanParam(
             name: 'RUN_SONAR',
             defaultValue: true,
@@ -45,6 +65,12 @@ pipeline {
         TEST_IMAGE = "aceest-fitness:${env.BUILD_NUMBER}-test"
         TEST_CONTAINER  = "aceest-test-${env.BUILD_NUMBER}"
         SMOKE_CONTAINER = "aceest-smoke-${env.BUILD_NUMBER}"
+        DEPLOY_TEST_CONTAINER = "aceest-deploy-test-${env.BUILD_NUMBER}"
+        // SCM-triggered builds use the parameter defaults (deploy, all, 20%).
+        ACTION = "${params.ACTION ?: 'deploy'}"
+        DEPLOY_STRATEGY = "${params.DEPLOY_STRATEGY ?: 'all'}"
+        CANARY_WEIGHT = "${params.CANARY_WEIGHT ?: '20'}"
+        DEPLOYED_FILE = "${env.WORKSPACE}/reports/deployed-strategies.txt"
     }
 
     stages {
@@ -75,6 +101,7 @@ pipeline {
         }
 
         stage('Build Environment') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh '''
                     docker version --format 'Docker client {{.Client.Version}} / server {{.Server.Version}}'
@@ -84,6 +111,7 @@ pipeline {
         }
 
         stage('Lint & Compile') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh '''
                     docker run --rm "$TEST_IMAGE" sh -c \
@@ -93,6 +121,7 @@ pipeline {
         }
 
         stage('Unit Tests') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh '''
                     set +e
@@ -114,7 +143,12 @@ pipeline {
         }
 
         stage('SonarQube Analysis & Quality Gate') {
-            when { expression { return params.RUN_SONAR } }
+            when {
+                allOf {
+                    environment name: 'ACTION', value: 'deploy'
+                    expression { return params.RUN_SONAR != false }
+                }
+            }
             steps {
                 script {
                     def scannerHome = tool 'SonarScanner'
@@ -140,18 +174,21 @@ pipeline {
         }
 
         stage('Build Runtime Image') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh 'docker build --target runtime -t "$APP_IMAGE" -t "$IMAGE_NAME:latest" .'
             }
         }
 
         stage('Smoke Test') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh 'bash scripts/smoke_test.sh "$APP_IMAGE" "$SMOKE_CONTAINER"'
             }
         }
 
         stage('Push to Docker Hub') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS,
                                                   usernameVariable: 'DOCKERHUB_USER',
@@ -169,6 +206,7 @@ pipeline {
         }
 
         stage('Build Artifacts') {
+            when { environment name: 'ACTION', value: 'deploy' }
             steps {
                 sh '''
                     mkdir -p dist
@@ -194,22 +232,93 @@ EOF
                 archiveArtifacts artifacts: 'dist/**', fingerprint: true
             }
         }
+
+        stage('Deploy to Kubernetes') {
+            when { environment name: 'ACTION', value: 'deploy' }
+            steps {
+                script {
+                    env.INGRESS_IP = sh(returnStdout: true, script: 'minikube ip').trim()
+                }
+                sh '''
+                    mkdir -p reports
+                    : > "$DEPLOYED_FILE"
+                    kubectl config current-context
+                    CHANGE_CAUSE="Jenkins build #$BUILD_NUMBER: v$APP_VERSION" \
+                        bash k8s/deploy.sh deploy "$DEPLOY_STRATEGY" "$REGISTRY_IMAGE:$BUILD_TAG_VERSION"
+                '''
+            }
+        }
+
+        stage('Post-Deploy Tests') {
+            when { environment name: 'ACTION', value: 'deploy' }
+            steps {
+                sh '''
+                    set +e
+                    docker run --name "$DEPLOY_TEST_CONTAINER" --network host \
+                        -e INGRESS_IP -e DEPLOY_STRATEGY -e CANARY_WEIGHT \
+                        -e EXPECTED_VERSION="$APP_VERSION" \
+                        "$TEST_IMAGE" python -m pytest deploy_tests -o addopts="" -v \
+                        --junitxml=reports/deploy-junit.xml
+                    status=$?
+                    mkdir -p reports
+                    docker cp "$DEPLOY_TEST_CONTAINER:/app/reports/deploy-junit.xml" reports/ || true
+                    docker rm "$DEPLOY_TEST_CONTAINER" >/dev/null
+                    exit $status
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/deploy-junit.xml'
+                }
+            }
+        }
+
+        stage('Promote / Rollback') {
+            when { not { environment name: 'ACTION', value: 'deploy' } }
+            steps {
+                sh 'bash k8s/deploy.sh "$ACTION" "$DEPLOY_STRATEGY"'
+            }
+        }
+
+        stage('Cluster Status') {
+            steps {
+                sh '''
+                    mkdir -p reports
+                    bash k8s/deploy.sh status | tee reports/k8s-status.txt
+                    kubectl -n aceest rollout history deployment/aceest-rolling | tee -a reports/k8s-status.txt
+                '''
+                archiveArtifacts artifacts: 'reports/k8s-status.txt, reports/deployed-strategies.txt', allowEmptyArchive: true
+            }
+        }
     }
 
     post {
         always {
             sh '''
-                docker rm -f "$TEST_CONTAINER" "$SMOKE_CONTAINER" >/dev/null 2>&1 || true
+                docker rm -f "$TEST_CONTAINER" "$SMOKE_CONTAINER" "$DEPLOY_TEST_CONTAINER" >/dev/null 2>&1 || true
                 docker rmi "$TEST_IMAGE" "$APP_IMAGE" >/dev/null 2>&1 || true
                 docker rmi "$REGISTRY_IMAGE:$BUILD_TAG_VERSION" >/dev/null 2>&1 || true
                 docker image prune -f >/dev/null 2>&1 || true
             '''
         }
         success {
-            echo "BUILD SUCCESS: ${env.REGISTRY_IMAGE}:${env.BUILD_TAG_VERSION} pushed (build #${env.BUILD_NUMBER})."
+            echo "BUILD SUCCESS: action=${env.ACTION}, strategy=${env.DEPLOY_STRATEGY}, version=${env.APP_VERSION} (build #${env.BUILD_NUMBER})."
         }
         failure {
-            echo 'BUILD FAILED: see the stage logs and the JUnit report above.'
+            script {
+                // Automatic rollback: revert exactly the strategies this build changed,
+                // newest first, so the cluster returns to the last stable version.
+                if (env.ACTION == 'deploy' && fileExists('reports/deployed-strategies.txt')) {
+                    sh '''
+                        tac reports/deployed-strategies.txt | while read -r strategy; do
+                            [ -n "$strategy" ] || continue
+                            echo "Rolling back $strategy to the last stable version"
+                            bash k8s/deploy.sh rollback "$strategy" || true
+                        done
+                    '''
+                }
+            }
+            echo 'BUILD FAILED: see the stage logs and the JUnit reports above.'
         }
     }
 }
