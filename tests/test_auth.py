@@ -96,3 +96,18 @@ def test_me_returns_current_user(auth_client):
 def test_logout_clears_session(auth_client):
     assert auth_client.post("/api/auth/logout").status_code == 200
     assert auth_client.get("/api/auth/me").status_code == 401
+
+
+def test_admin_bootstrap_tolerates_concurrent_creation(app, monkeypatch, caplog):
+    """Another pod sharing the SQLite file created the admin first."""
+    import sqlite3
+
+    from aceest import auth
+
+    def created_elsewhere(*_args, **_kwargs):
+        raise sqlite3.IntegrityError("UNIQUE constraint failed: users.username")
+
+    app.config.update(ADMIN_USERNAME="second-admin", ADMIN_PASSWORD_IS_DEFAULT=True)
+    monkeypatch.setattr(auth, "create_user", created_elsewhere)
+    auth.ensure_admin_user(app)  # must not raise
+    assert "default password" not in caplog.text

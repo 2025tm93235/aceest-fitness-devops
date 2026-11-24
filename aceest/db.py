@@ -14,7 +14,8 @@ from flask.cli import with_appcontext
 def get_db() -> sqlite3.Connection:
     """Return the request-scoped database connection, opening it on first use."""
     if "db" not in g:
-        connection = sqlite3.connect(current_app.config["DATABASE"])
+        # timeout: wait for other pods' locks on the shared SQLite file
+        connection = sqlite3.connect(current_app.config["DATABASE"], timeout=15)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         g.db = connection
