@@ -37,6 +37,9 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer>ACEest Fitness &amp; Gym &middot; <a href="{{ url_for('health.health') }}">health</a></footer>
+  <footer>
+    ACEest Fitness &amp; Gym &middot; <a href="{{ url_for('health.health') }}">health</a>
+    &middot; <span class="version">v{{ app_version }} &middot; {{ deployment_track }} &middot; {{ instance_name }}</span>
+  </footer>
 </body>
 </html>

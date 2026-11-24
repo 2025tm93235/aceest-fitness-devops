@@ -25,6 +25,7 @@ def create_app(test_config: Mapping[str, Any] | None = None) -> Flask:
         app.config.from_mapping(test_config)
 
     register_error_handlers(app)
+    _register_version_headers(app)
 
     from aceest import db
 
@@ -42,3 +43,21 @@ def create_app(test_config: Mapping[str, Any] | None = None) -> Flask:
 
     web.init_app(app)
     return app
+
+
+def _register_version_headers(app: Flask) -> None:
+    """Expose the running version and track on every response and template."""
+
+    @app.after_request
+    def add_version_headers(response):
+        response.headers["X-App-Version"] = __version__
+        response.headers["X-Deployment-Track"] = app.config["DEPLOYMENT_TRACK"]
+        return response
+
+    @app.context_processor
+    def inject_version() -> dict[str, str]:
+        return {
+            "app_version": __version__,
+            "deployment_track": app.config["DEPLOYMENT_TRACK"],
+            "instance_name": app.config["INSTANCE_NAME"],
+        }

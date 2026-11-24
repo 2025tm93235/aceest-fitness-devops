@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
 import aceest
 from aceest.db import get_db
@@ -28,3 +28,13 @@ def health():
         "database": database,
     }
     return jsonify(body), 200 if healthy else 503
+
+
+@bp.get("/version")
+def version():
+    """Which version, deployment track and pod answered this request."""
+    return jsonify(
+        version=aceest.__version__,
+        track=current_app.config["DEPLOYMENT_TRACK"],
+        instance=current_app.config["INSTANCE_NAME"],
+    )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -33,4 +34,9 @@ def load_config() -> dict[str, Any]:
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": _env_flag("ACEEST_SECURE_COOKIES"),
+        # Where this instance runs: the Kubernetes track (rolling, blue, green,
+        # stable, canary, variant-b, shadow) and the pod name. Shown in the UI
+        # footer and in /version so deployments can be told apart.
+        "DEPLOYMENT_TRACK": os.environ.get("DEPLOYMENT_TRACK", "local"),
+        "INSTANCE_NAME": os.environ.get("POD_NAME") or socket.gethostname(),
     }
