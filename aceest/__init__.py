@@ -10,7 +10,7 @@ from flask import Flask
 from aceest.config import load_config
 from aceest.errors import register_error_handlers
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 def create_app(test_config: Mapping[str, Any] | None = None) -> Flask:
